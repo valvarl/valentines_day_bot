@@ -2,11 +2,12 @@
 # -*- coding: utf-8 -*-
 
 import vk_api
-import  vk_api.exceptions
+import vk_api.exceptions
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 import random
 from src.Firebase import *
+from datetime import datetime, timedelta
 
 
 class ValentinesDayBot:
@@ -60,8 +61,13 @@ class ValentinesDayBot:
                         remain = valentine['remain']-1
                         set_name(from_id, 'remain', remain)
                         to_id, to_name = ValentinesDayBot.get_user(self.bot_session, valentine['url'])
-                        if storage_valentine(from_id, to_id, to_name):
-                            self.tag_user(self.bot_session, to_id, to_name)
+                        storage_result = storage_valentine(from_id, to_id, to_name)
+                        now = datetime.utcnow() + timedelta(hours=3)
+                        if now >= datetime(2021, 2, 14, 22):
+                            force_send()
+                        elif now.day >= 14:
+                            if not try_to_send_vk() and storage_result:
+                                self.tag_user(self.bot_session, to_id, to_name)
                         if remain > 0:
                             self.send_message(self.bot_api, from_id, self.phrases['finish1'] + self.phrases['finish2'] +
                                               ['одну', 'две'][remain-1] + self.phrases['finish3'], keyboard='start2')
@@ -95,7 +101,15 @@ class ValentinesDayBot:
                         set_name(from_id, 'email', '')
                         self.send_message(self.bot_api, from_id, self.phrases['look3'], keyboard='look3')
                 elif message == 'нет, я жду свою валентиночку':
-                    self.send_message(self.bot_api, from_id, self.phrases['not_send'], keyboard='start2')
+                    valentine = expect_valentine(from_id)
+                    if valentine and not valentine['sent']:
+                        now = datetime.utcnow() + timedelta(hours=3)
+                        if now.day >= 10:
+                            self.send_message(self.bot_api, from_id, json.dumps(valentine))
+                        else:
+                            self.send_message(self.bot_api, from_id, self.phrases['not_send'], keyboard='start2')
+                    else:
+                        self.send_message(self.bot_api, from_id, self.phrases['not_expect'], keyboard='start2')
                 elif message == 'хочу написать заново':
                     context = self.get_context(self.bot_session, from_id, message_id)
                     if context[-1]['text'] == self.phrases['look2']:
@@ -174,7 +188,6 @@ class ValentinesDayBot:
 
         keyboard = keyboard.get_keyboard()
         return keyboard
-
 
     @staticmethod
     def send_message(bot_api, user_id, message, keyboard=None, attachment=None):
