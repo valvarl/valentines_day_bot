@@ -10,13 +10,15 @@ from src.Firebase import *
 
 
 class ValentinesDayBot:
-    def __init__(self, group_token, group_id):
+    def __init__(self, group_token, group_id, post_id):
         self.group_id = group_id
+        self.post_id = post_id
         with open('src/phrases.json', encoding='utf8') as inf:
             self.phrases = json.load(inf)['phrases']
 
         self.bot_session = vk_api.VkApi(token=group_token)
         self.bot_api = self.bot_session.get_api()
+        print('ready')
 
     def start(self):
         longpoll = VkBotLongPoll(self.bot_session, self.group_id)
@@ -34,9 +36,11 @@ class ValentinesDayBot:
                             else:
                                 self.send_message(self.bot_api, from_id, self.phrases['all_sent'])
                         else:
+                            init_user(from_id)
                             set_name(from_id, 'remain', 3)
                             self.send_message(self.bot_api, from_id, self.phrases['greeting'], keyboard='start')
                     else:
+                        init_user(from_id)
                         set_name(from_id, 'remain', 3)
                         self.send_message(self.bot_api, from_id, self.phrases['greeting'], keyboard='start')
                 elif message == 'да':
@@ -55,7 +59,9 @@ class ValentinesDayBot:
                         valentine = get_valentine(from_id)
                         remain = valentine['remain']-1
                         set_name(from_id, 'remain', remain)
-                        storage_valentine(from_id, to_id=ValentinesDayBot.get_user(self.bot_session, valentine['url']))
+                        to_id, to_name = ValentinesDayBot.get_user(self.bot_session, valentine['url'])
+                        if storage_valentine(from_id, to_id, to_name):
+                            self.tag_user(self.bot_session, to_id, to_name)
                         if remain > 0:
                             self.send_message(self.bot_api, from_id, self.phrases['finish1'] + self.phrases['finish2'] +
                                               ['одну', 'две'][remain-1] + self.phrases['finish3'], keyboard='start2')
@@ -202,8 +208,20 @@ class ValentinesDayBot:
                         'user_ids': url[url.index('.com/')+5:]
                     }
                 )
-                return user_id[0]['id']
+                return user_id[0]['id'], user_id[0]['first_name']
             except vk_api.exceptions.ApiError:
-                return 0
+                return 0, ''
         else:
-            return 0
+            return 0, ''
+
+    def tag_user(self, bot_api, user_id, user_name):
+        bot_api.method(
+            'wall.createComment',
+            {
+                'owner_id': -self.group_id,
+                'post_id': self.post_id,
+                'from_group': self.group_id,
+                'message': '@id{} ({}), у меня есть валентинка для тебя! '
+                           'Скорее напиши "начать" в сообщения группы, чтобы ее получить.'.format(user_id, user_name)
+            }
+        )

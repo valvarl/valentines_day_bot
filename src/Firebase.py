@@ -10,6 +10,11 @@ with open('access_data.json') as inf:
 firebase = fb.FirebaseApplication(firebase_url)
 
 
+def init_user(user_id):
+    result = firebase.post('/in_system/', user_id)
+    print(result)
+
+
 def get_valentine(user_id):
     result = firebase.get('/users/%d/' % user_id, 'valentine')
     print(result)
@@ -21,10 +26,14 @@ def set_name(user_id, name, data):
     print(result)
 
 
-def storage_valentine(user_id, to_id=0):
+def storage_valentine(user_id, to_id, to_name):
     data = get_valentine(user_id)
     data['from_id'] = user_id
     data['to_id'] = to_id
+    data['to_name'] = to_name
     data['sent'] = False
     result = firebase.post('/storage/', data)
     print(result)
+    result = firebase.get('', 'in_system')
+    print(result)
+    return to_id and to_id not in (result.values() if result else [])

@@ -9,6 +9,7 @@ if __name__ == '__main__':
         data = json.load(inf)
         group_token = data['group_token']
         group_id = data['group_id']
+        post_id = data['post_id']
 
-    vdb = ValentinesDayBot(group_token, group_id)
+    vdb = ValentinesDayBot(group_token, group_id, post_id)
     vdb.start()
