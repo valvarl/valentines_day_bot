@@ -31,7 +31,7 @@ class ValentinesDayBot:
                 if message in ['начать', 'start']:
                     if event.message['conversation_message_id'] != 1:
                         valentine = get_valentine(from_id)
-                        if 'remain' in valentine.keys():
+                        if valentine and 'remain' in valentine.keys():
                             if valentine['remain'] > 0:
                                 self.send_message(self.bot_api, from_id, self.phrases['name'])
                             else:
@@ -56,6 +56,9 @@ class ValentinesDayBot:
                     elif context[-1]['text'] == self.phrases['look2']:
                         self.send_message(self.bot_api, from_id, self.phrases['url1'] +
                                           get_valentine(from_id)['name'] + self.phrases['url2'], keyboard='skip')
+                    elif context[-1]['text'] == self.phrases['contacts']:
+                        self.send_message(self.bot_api, from_id, self.phrases['url1'] +
+                                          get_valentine(from_id)['name'] + self.phrases['url2'], keyboard='skip')
                     elif context[-1]['text'] == self.phrases['look3']:
                         valentine = get_valentine(from_id)
                         remain = valentine['remain']-1
@@ -68,9 +71,10 @@ class ValentinesDayBot:
                         elif now.day >= 14:
                             if not try_to_send_vk() and storage_result:
                                 self.tag_user(self.bot_session, to_id, to_name)
+                        set_name(from_id, 'ready', True)
                         if remain > 0:
                             self.send_message(self.bot_api, from_id, self.phrases['finish1'] + self.phrases['finish2'] +
-                                              ['одну', 'две'][remain-1] + self.phrases['finish3'], keyboard='start2')
+                                              ['одну', 'две'][remain-1] + self.phrases['finish3'], keyboard='start3')
                         else:
                             self.send_message(self.bot_api, from_id, self.phrases['finish1'] + self.phrases['finish4'])
                 elif message == 'нет':
@@ -78,7 +82,7 @@ class ValentinesDayBot:
                     if context[-1]['text'] == self.phrases['privacy']:
                         self.send_message(self.bot_api, from_id, self.phrases['pseudonym'])
                     elif context[-1]['text'] == self.phrases['look1'] and get_valentine(from_id)['remain'] > 0:
-                        self.send_message(self.bot_api, from_id, self.phrases['again1'] + self.phrases['name'])
+                        self.send_message(self.bot_api, from_id, self.phrases['finish3'][2:], keyboard='start2')
                     elif context[-1]['text'] == self.phrases['look2']:
                         set_name(from_id, 'paragraph', '')
                         self.send_message(self.bot_api, from_id, self.phrases['url1'] +
@@ -89,6 +93,7 @@ class ValentinesDayBot:
                 elif message == 'пропустить':
                     context = self.get_context(self.bot_session, from_id, message_id)
                     if context[-1]['text'] in [self.phrases['paragraph'], self.phrases['again2']]:
+                        set_name(from_id, 'paragraph', '')
                         self.send_message(self.bot_api, from_id, self.phrases['url1'] +
                                           get_valentine(from_id)['name'] + self.phrases['url2'], keyboard='skip')
                     elif context[-1]['text'].startswith(self.phrases['url1']) and \
@@ -99,30 +104,46 @@ class ValentinesDayBot:
                     elif context[-1]['text'].startswith(self.phrases['email1']) and \
                             context[-1]['text'].endswith(self.phrases['email2']):
                         set_name(from_id, 'email', '')
-                        self.send_message(self.bot_api, from_id, self.phrases['look3'], keyboard='look3')
-                elif message == 'нет, я жду свою валентиночку':
-                    valentine = expect_valentine(from_id)
-                    if valentine and not valentine['sent']:
-                        now = datetime.utcnow() + timedelta(hours=3)
-                        if now.day >= 10:
-                            self.send_message(self.bot_api, from_id, json.dumps(valentine))
+                        valentine = get_valentine(from_id)
+                        if valentine['url'] or valentine['email']:
+                            self.send_message(self.bot_api, from_id, self.phrases['look3'], keyboard='look3')
                         else:
-                            self.send_message(self.bot_api, from_id, self.phrases['not_send'], keyboard='start2')
-                    else:
-                        self.send_message(self.bot_api, from_id, self.phrases['not_expect'], keyboard='start2')
+                            self.send_message(self.bot_api, from_id, self.phrases['contacts'], keyboard='contacts')
+                elif message == 'нет, я жду свою валентиночку':
+                    context = self.get_context(self.bot_session, from_id, message_id)
+                    if context[-1]['text'] == self.phrases['greeting'] or \
+                            context[-1]['text'].endswith(self.phrases['finish3'][2:]):
+                        valentine = expect_valentine(from_id)
+                        if valentine:
+                            now = datetime.utcnow() + timedelta(hours=3)
+                            if now.day >= 10:
+                                for v in valentine:
+                                    self.send_message(self.bot_api, from_id, json.dumps(v))
+                                self.send_message(self.bot_api, from_id, self.phrases['received'], keyboard='start2')
+                            else:
+                                self.send_message(self.bot_api, from_id, self.phrases['not_send'], keyboard='start2')
+                        else:
+                            self.send_message(self.bot_api, from_id, self.phrases['not_expect'], keyboard='start2')
                 elif message == 'хочу написать заново':
                     context = self.get_context(self.bot_session, from_id, message_id)
                     if context[-1]['text'] == self.phrases['look2']:
                         self.send_message(self.bot_api, from_id, self.phrases['again2'])
                 elif message == 'я передумал отправлять':
                     context = self.get_context(self.bot_session, from_id, message_id)
-                    if context[-1]['text'] == self.phrases['look3']:
+                    if context[-1]['text'] in [self.phrases['look3'], self.phrases['contacts']]:
                         self.send_message(self.bot_api, from_id, self.phrases['finish3'][2:], keyboard='start2')
                 else:
                     context = self.get_context(self.bot_session, from_id, message_id)
-                    if context[-1]['text'] in [self.phrases['name'], self.phrases['again1'] + self.phrases['name']]:
+                    if context[-1]['text'] == self.phrases['name']:
                         set_name(from_id, 'name', event.message['text'])
-                        set_name(from_id, 'enum', list(range(1, 6)))
+                        valentine = get_valentine(from_id)
+                        if 'ready' in valentine.keys() and not valentine['ready']:
+                            enum = valentine['enum']
+                        else:
+                            enum = list(sorted(random.sample(range(15), 5)))
+                            set_name(from_id, 'enum', enum)
+                            set_name(from_id, 'ready', False)
+                        print(enum)
                         self.send_message(self.bot_api, from_id, self.phrases['valentine'], keyboard='choice')
                     elif context[-1]['text'] == self.phrases['valentine']:
                         set_name(from_id, 'choice', message)
@@ -155,6 +176,11 @@ class ValentinesDayBot:
         if response == 'start2':
             keyboard.add_button('Начать', color=VkKeyboardColor.PRIMARY)
 
+        if response == 'start3':
+            keyboard.add_button('Нет, я жду свою валентиночку', color=VkKeyboardColor.SECONDARY)
+            keyboard.add_line()
+            keyboard.add_button('Начать', color=VkKeyboardColor.PRIMARY)
+
         elif response == 'choice':
             keyboard.add_button('1', color=VkKeyboardColor.PRIMARY)
             keyboard.add_button('2', color=VkKeyboardColor.PRIMARY)
@@ -178,6 +204,11 @@ class ValentinesDayBot:
             keyboard.add_button('Хочу написать заново', color=VkKeyboardColor.SECONDARY)
             keyboard.add_line()
             keyboard.add_button('Нет', color=VkKeyboardColor.SECONDARY)
+            keyboard.add_button('Да', color=VkKeyboardColor.PRIMARY)
+
+        elif response == 'contacts':
+            keyboard.add_button('Я передумал отправлять', color=VkKeyboardColor.SECONDARY)
+            keyboard.add_line()
             keyboard.add_button('Да', color=VkKeyboardColor.PRIMARY)
 
         elif response == 'look3':

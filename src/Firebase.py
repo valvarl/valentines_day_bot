@@ -24,9 +24,13 @@ def get_valentine(user_id):
 def expect_valentine(user_id):
     result = firebase.get('/awaiting_dispatch/', user_id)
     if result:
-        res = firebase.get('/storage/', result)
-        firebase.put('/storage/{}/'.format(result), 'sent', True)
-        return res
+        new = []
+        for v in result.values():
+            res = firebase.get('/storage/', v)
+            if not res['sent']:
+                firebase.put('/storage/{}/'.format(v), 'sent', True)
+                new.append(res)
+        return new
     else:
         return None
 
@@ -45,7 +49,7 @@ def storage_valentine(user_id, to_id, to_name):
     result = firebase.post('/storage/', data)
     print(result)
     if to_id:
-        result = firebase.put('/awaiting_dispatch/', user_id, result['name'])
+        result = firebase.post('/awaiting_dispatch/%d' % to_id, result['name'])
         print(result)
     result = firebase.get('', 'in_system')
     print(result)
