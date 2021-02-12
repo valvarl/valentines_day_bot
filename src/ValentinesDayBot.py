@@ -6,6 +6,7 @@ import vk_api.exceptions
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 import random
+import requests
 from src.Firebase import *
 from datetime import datetime, timedelta
 
@@ -25,6 +26,7 @@ class ValentinesDayBot:
         longpoll = VkBotLongPoll(self.bot_session, self.group_id)
         for event in longpoll.listen():
             if event.type == VkBotEventType.MESSAGE_NEW and event.from_user:
+                print(event.message)
                 from_id = event.message['from_id']
                 message_id = event.message['id']
                 message = event.message['text'].lower()
@@ -64,13 +66,20 @@ class ValentinesDayBot:
                         remain = valentine['remain']-1
                         set_name(from_id, 'remain', remain)
                         to_id, to_name = ValentinesDayBot.get_user(self.bot_session, valentine['url'])
-                        storage_result = storage_valentine(from_id, to_id, to_name)
+                        valentine = storage_valentine(from_id, to_id, to_name)
+                        user_in_system = check_user(to_id)
                         now = datetime.utcnow() + timedelta(hours=3)
                         if now >= datetime(2021, 2, 14, 22):
-                            force_send()
-                        elif now.day >= 14:
-                            if not try_to_send_vk() and storage_result:
+                            self.force_send(valentine)
+                        elif to_id:
+                            if now.day >= 14:
+                                if user_in_system:
+                                    self.try_to_send_vk(valentine)
+                                else:
+                                    self.tag_user(self.bot_session, to_id, to_name)
+                            elif not user_in_system:
                                 self.tag_user(self.bot_session, to_id, to_name)
+
                         set_name(from_id, 'ready', True)
                         if remain > 0:
                             self.send_message(self.bot_api, from_id, self.phrases['finish1'] + self.phrases['finish2'] +
@@ -132,6 +141,15 @@ class ValentinesDayBot:
                     context = self.get_context(self.bot_session, from_id, message_id)
                     if context[-1]['text'] in [self.phrases['look3'], self.phrases['contacts']]:
                         self.send_message(self.bot_api, from_id, self.phrases['finish3'][2:], keyboard='start2')
+                if event.message['attachments']:
+                    context = self.get_context(self.bot_session, from_id, message_id)
+                    if context[-1]['text'] == self.phrases['valentine']:
+                        if event.message['attachments'][0]['type'] == 'photo':
+                            url = sorted(event.message['attachments'][0]['photo']['sizes'],
+                                 key=lambda x: x['height']*x['width'], reverse=True)[0]['url']
+                            photo = self.upload_photo(url)
+                            set_name(from_id, 'photo', photo)
+                            set_name(from_id, 'choice', '')
                 else:
                     context = self.get_context(self.bot_session, from_id, message_id)
                     if context[-1]['text'] == self.phrases['name']:
@@ -146,8 +164,10 @@ class ValentinesDayBot:
                         print(enum)
                         self.send_message(self.bot_api, from_id, self.phrases['valentine'], keyboard='choice')
                     elif context[-1]['text'] == self.phrases['valentine']:
-                        set_name(from_id, 'choice', message)
-                        self.send_message(self.bot_api, from_id, self.phrases['privacy'], keyboard='yes-no')
+                        if message in [str(i) for i in range(1, 6)]:
+                            set_name(from_id, 'choice', int(message))
+                            set_name(from_id, 'photo', '')
+                            self.send_message(self.bot_api, from_id, self.phrases['privacy'], keyboard='yes-no')
                     elif context[-1]['text'] == self.phrases['pseudonym']:
                         set_name(from_id, 'sign', event.message['text'])
                         self.send_message(self.bot_api, from_id, self.phrases['look1'], keyboard='no-yes')
@@ -269,3 +289,21 @@ class ValentinesDayBot:
                            'Скорее напиши "начать" в сообщения группы, чтобы ее получить.'.format(user_id, user_name)
             }
         )
+
+    def upload_photo(self, url):
+        upload_url = self.bot_api.photos.getMessagesUploadServer(peer_id=0)['upload_url']
+        print(upload_url)
+        pic = requests.get(url)
+        filename = 'img.jpg' if pic.headers['Content-Type'] == 'image/jpeg' else 'img.png'
+        request = requests.post(upload_url, files={'file': (filename, pic.content, pic.headers['Content-Type'])}).json()
+        print(request)
+        save_pic = self.bot_session.method('photos.saveMessagesPhoto', request)
+        print(save_pic)
+        pic_attach = 'photo{}_{}'.format(save_pic[0]['owner_id'], save_pic[0]['id'])
+        return pic_attach
+
+    def try_to_send_vk(self, valentine):
+        pass
+
+    def force_send(self, valentine):
+        pass

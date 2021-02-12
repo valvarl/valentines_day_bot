@@ -51,14 +51,10 @@ def storage_valentine(user_id, to_id, to_name):
     if to_id:
         result = firebase.post('/awaiting_dispatch/%d' % to_id, result['name'])
         print(result)
+    return data
+
+
+def check_user(user_id):
     result = firebase.get('', 'in_system')
     print(result)
-    return to_id and to_id not in (result.values() if result else [])
-
-
-def try_to_send_vk():
-    pass
-
-
-def force_send():
-    pass
+    return user_id in (result.values() if result else [])
