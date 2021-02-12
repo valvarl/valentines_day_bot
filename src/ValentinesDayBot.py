@@ -7,6 +7,11 @@ from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 import random
 import requests
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 from src.Firebase import *
 from datetime import datetime, timedelta
 
@@ -21,9 +26,13 @@ HOUR_X = 22
 
 
 class ValentinesDayBot:
-    def __init__(self, group_token, group_id, post_id):
+    def __init__(self, group_token, group_id, post_id, email, password, st1_start, st2_start):
         self.group_id = group_id
         self.post_id = post_id
+        self.email = email
+        self.password = password
+        self.st1_start = st1_start
+        self.st2_start = st2_start
 
         self.bot_session = vk_api.VkApi(token=group_token)
         self.bot_api = self.bot_session.get_api()
@@ -38,6 +47,7 @@ class ValentinesDayBot:
                 message_id = event.message['id']
                 message = event.message['text'].lower()
                 if message in ['начать', 'start']:
+                    self.force_send(get_valentine(from_id))
                     if event.message['conversation_message_id'] != 1:
                         valentine = get_valentine(from_id)
                         if valentine and 'remain' in valentine.keys():
@@ -73,16 +83,18 @@ class ValentinesDayBot:
                         remain = valentine['remain']-1
                         set_name(from_id, 'remain', remain)
                         to_id, to_name = self.get_user(valentine['url'])
-                        valentine = storage_valentine(from_id, to_id, to_name)
+                        valentine, storage_link = storage_valentine(from_id, to_id, to_name)
                         user_in_system = to_id in users_in_system()
                         now = datetime.utcnow() + timedelta(hours=3)
                         if now >= datetime(2021, 2, DAY_X, HOUR_X):
-                            self.force_send(valentine)
+                            if self.force_send(valentine):
+                                mark_sent(storage_link)
                         elif to_id:
                             if now.day >= DAY_X:
                                 if user_in_system:
-                                    self.send_vk(to_id, valentine)
-                                    self.send_message(valentine['to_id'], phrases['received'], keyboard='start2')
+                                    if self.send_vk(to_id, valentine):
+                                        mark_sent(storage_link)
+                                        self.send_message(valentine['to_id'], phrases['received'], keyboard='start2')
                                 else:
                                     self.tag_user(to_id, to_name)
                             elif not user_in_system:
@@ -159,6 +171,14 @@ class ValentinesDayBot:
                             photo = self.upload_photo(url)
                             set_name(from_id, 'photo', photo)
                             set_name(from_id, 'choice', '')
+                elif message == self.st1_start:
+                    self.send_message(from_id, "Начинаю рассылку валентинок по вк.")
+                    self.broadcast(self.send_vk)
+                    self.send_message(from_id, "Рассылка завершена.")
+                elif message == self.st2_start:
+                    self.send_message(from_id, "Начинаю рассылку оставшихся валентинок.")
+                    self.broadcast(self.force_send)
+                    self.send_message(from_id, "Рассылка завершена.")
                 else:
                     context = self.get_context(from_id, message_id)
                     if context[-1]['text'] == phrases['name']:
@@ -304,11 +324,51 @@ class ValentinesDayBot:
         return pic_attach
 
     def send_vk(self, user_id, valentine):
-        message = '{}\n{}'.format(valentine['name'], valentine['paragraph'])
-        self.send_message(user_id, 'Я принес тебе валентинку!')
-        self.send_message(user_id, message, attachment=valentines[valentine['choice']])
-        if valentine['sign']:
-            self.send_message(user_id, valentine['sign'])
+        try:
+            paragraph = '\n' + valentine['paragraph'] if valentine['paragraph'] else ''
+            sign = '\n' + valentine['sign'] if valentine['sign'] else ''
+            message = '{}!{}{}'.format(valentine['name'], paragraph, sign)
+            self.send_message(user_id, message, attachment=valentines[valentine['choice']])
+            return True
+        except Exception:
+            return False
 
     def force_send(self, valentine):
-        pass
+        if valentine['to_id'] in users_in_system() and self.send_vk(valentine['to_id'], valentine):
+            return True
+        elif valentine['email']:
+            message = MIMEMultipart()
+            message['From'] = self.email
+            message['To'] = valentine['email']
+            message['Subject'] = 'Валентинка 😊'
+            paragraph = '\n' + valentine['paragraph'] if valentine['paragraph'] else ''
+            sign = '\n' + valentine['sign'] if valentine['sign'] else ''
+            msg = '{}!{}{}'.format(valentine['name'], paragraph, sign)
+            message.attach(MIMEText(msg, 'plain'))
+
+            attach_file_name = 'valentine%d.mp4' % valentine['choice']
+            attach_file = open('valentines/' + attach_file_name, 'rb')
+            payload = MIMEBase('application', 'octet-stream')
+            payload.set_payload(attach_file.read())
+            encoders.encode_base64(payload)
+            payload.add_header('Content-Disposition', 'attachment', filename=attach_file_name)
+            message.attach(payload)
+
+            session = smtplib.SMTP_SSL('smtp.mail.ru', 465)
+            session.login(self.email, self.password)
+            text = message.as_string()
+            session.sendmail(self.email, valentine['email'], text)
+            session.quit()
+            print('Mail Sent')
+            return True
+        else:
+            archive(valentine)
+            return False
+
+    @staticmethod
+    def broadcast(func):
+        val = get_valentines()
+        if val:
+            for v in [v for v in val.keys() if val[v]['to_id'] and not val[v]['sent']]:
+                if func(v['to_id'], val[v]):
+                    mark_sent(v)

@@ -47,14 +47,30 @@ def storage_valentine(user_id, to_id, to_name):
     data['to_name'] = to_name
     data['sent'] = False
     result = firebase.post('/storage/', data)
+    storage_link = result['name']
     print(result)
     if to_id:
-        result = firebase.post('/awaiting_dispatch/%d' % to_id, result['name'])
+        result = firebase.post('/awaiting_dispatch/%d' % to_id, storage_link)
         print(result)
-    return data
+    return data, storage_link
 
 
 def users_in_system():
     result = firebase.get('', 'in_system')
     print(result)
-    return result.values() if result else []
+    return list(result.values()) if result else []
+
+
+def archive(valentine):
+    result = firebase.post('/archive/', valentine)
+    print(result)
+
+
+def mark_sent(storage_link):
+    result = firebase.put('/storage/{}/'.format(storage_link), 'sent', True)
+    print(result)
+
+
+def get_valentines():
+    result = firebase.get('', 'storage')
+    return result
