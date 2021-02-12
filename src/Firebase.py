@@ -54,7 +54,7 @@ def storage_valentine(user_id, to_id, to_name):
     return data
 
 
-def check_user(user_id):
+def users_in_system():
     result = firebase.get('', 'in_system')
     print(result)
-    return user_id in (result.values() if result else [])
+    return result.values() if result else []

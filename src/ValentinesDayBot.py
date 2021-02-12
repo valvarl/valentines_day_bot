@@ -16,6 +16,9 @@ with open('src/phrases.json', encoding='utf8') as inf:
 with open('src/valentines.json', encoding='utf8') as inf:
     valentines = json.load(inf)
 
+DAY_X = 12
+HOUR_X = 22
+
 
 class ValentinesDayBot:
     def __init__(self, group_token, group_id, post_id):
@@ -65,31 +68,31 @@ class ValentinesDayBot:
                     elif context[-1]['text'] == phrases['contacts']:
                         self.send_message(from_id, phrases['url1'] +
                                           get_valentine(from_id)['name'] + phrases['url2'], keyboard='skip')
-                    elif context[-1]['text'] == phrases['look3']:
+                    elif context[-1]['text'].endswith(phrases['look3']):
                         valentine = get_valentine(from_id)
                         remain = valentine['remain']-1
                         set_name(from_id, 'remain', remain)
                         to_id, to_name = self.get_user(valentine['url'])
                         valentine = storage_valentine(from_id, to_id, to_name)
-                        user_in_system = check_user(to_id)
+                        user_in_system = to_id in users_in_system()
                         now = datetime.utcnow() + timedelta(hours=3)
-                        if now >= datetime(2021, 2, 14, 22):
+                        if now >= datetime(2021, 2, DAY_X, HOUR_X):
                             self.force_send(valentine)
                         elif to_id:
-                            if now.day >= 14:
+                            if now.day >= DAY_X:
                                 if user_in_system:
-                                    self.try_to_send_vk(valentine)
+                                    self.send_vk(to_id, valentine)
+                                    self.send_message(valentine['to_id'], phrases['received'], keyboard='start2')
                                 else:
-                                    self.tag_user(self.bot_session, to_id, to_name)
+                                    self.tag_user(to_id, to_name)
                             elif not user_in_system:
-                                self.tag_user(self.bot_session, to_id, to_name)
-
+                                self.tag_user(to_id, to_name)
                         set_name(from_id, 'ready', True)
                         if remain > 0:
                             self.send_message(from_id, phrases['finish1'] + phrases['finish2'] +
                                               ['одну', 'две'][remain-1] + phrases['finish3'], keyboard='start3')
                         else:
-                            self.send_message(from_id, self.phrases['finish1'] + self.phrases['finish4'])
+                            self.send_message(from_id, phrases['finish1'] + phrases['finish4'])
                 elif message == 'нет':
                     context = self.get_context(from_id, message_id)
                     if context[-1]['text'] == phrases['privacy']:
@@ -100,7 +103,7 @@ class ValentinesDayBot:
                         set_name(from_id, 'paragraph', '')
                         self.send_message(from_id, phrases['url1'] +
                                           get_valentine(from_id)['name'] + phrases['url2'], keyboard='skip')
-                    elif context[-1]['text'] == phrases['look3']:
+                    elif context[-1]['text'].endswith(phrases['look3']):
                         self.send_message(from_id, phrases['url1'] +
                                           get_valentine(from_id)['name'] + phrases['url2'], keyboard='skip')
                 elif message == 'пропустить':
@@ -119,7 +122,9 @@ class ValentinesDayBot:
                         set_name(from_id, 'email', '')
                         valentine = get_valentine(from_id)
                         if valentine['url'] or valentine['email']:
-                            self.send_message(from_id, phrases['look3'], keyboard='look3')
+                            self.send_message(from_id, 'vk: {}\nemail: {}\n\n'.
+                                              format(valentine['url'], valentine['email']) + phrases['look3'],
+                                              keyboard='look3')
                         else:
                             self.send_message(from_id, phrases['contacts'], keyboard='contacts')
                 elif message == 'нет, я жду свою валентиночку':
@@ -129,9 +134,9 @@ class ValentinesDayBot:
                         valentine = expect_valentine(from_id)
                         if valentine:
                             now = datetime.utcnow() + timedelta(hours=3)
-                            if now.day >= 10:
+                            if now.day >= DAY_X:
                                 for v in valentine:
-                                    self.send_message(from_id, json.dumps(v))
+                                    self.send_vk(from_id, v)
                                 self.send_message(from_id, phrases['received'], keyboard='start2')
                             else:
                                 self.send_message(from_id, phrases['not_send'], keyboard='start2')
@@ -143,14 +148,14 @@ class ValentinesDayBot:
                         self.send_message(from_id, phrases['again2'])
                 elif message == 'я передумал отправлять':
                     context = self.get_context(from_id, message_id)
-                    if context[-1]['text'] in [phrases['look3'], phrases['contacts']]:
+                    if context[-1]['text'] == phrases['contacts'] or context[-1]['text'].endswith(phrases['look3']):
                         self.send_message(from_id, phrases['finish3'][2:], keyboard='start2')
                 elif event.message['attachments']:
                     context = self.get_context(from_id, message_id)
                     if context[-1]['text'] == phrases['valentine']:
                         if event.message['attachments'][0]['type'] == 'photo':
                             url = sorted(event.message['attachments'][0]['photo']['sizes'],
-                                 key=lambda x: x['height']*x['width'], reverse=True)[0]['url']
+                                         key=lambda x: x['height']*x['width'], reverse=True)[0]['url']
                             photo = self.upload_photo(url)
                             set_name(from_id, 'photo', photo)
                             set_name(from_id, 'choice', '')
@@ -159,12 +164,12 @@ class ValentinesDayBot:
                     if context[-1]['text'] == phrases['name']:
                         set_name(from_id, 'name', event.message['text'])
                         valentine = get_valentine(from_id)
-                        if 'ready' in valentine.keys() and not valentine['ready']:
-                            enum = valentine['enum']
-                        else:
+                        if 'ready' not in valentine.keys() or 'ready' in valentine.keys() and valentine['ready']:
                             enum = list(sorted(random.sample(range(15), 5)))
                             set_name(from_id, 'enum', enum)
                             set_name(from_id, 'ready', False)
+                        else:
+                            enum = valentine['enum']
                         print(enum)
                         self.send_message(from_id, phrases['valentine'], keyboard='choice',
                                           attachment=[valentines[i] for i in range(15) if i in enum])
@@ -187,7 +192,10 @@ class ValentinesDayBot:
                     elif context[-1]['text'].startswith(phrases['email1']) and \
                             context[-1]['text'].endswith(phrases['email2']):
                         set_name(from_id, 'email', message)
-                        self.send_message(from_id, phrases['look3'], keyboard='look3')
+                        valentine = get_valentine(from_id)
+                        self.send_message(from_id, 'vk: {}\nemail: {}\n\n'.
+                                          format(valentine['url'], valentine['email']) + phrases['look3'],
+                                          keyboard='look3')
 
     @staticmethod
     def create_keyboard(response):
@@ -255,24 +263,18 @@ class ValentinesDayBot:
         )
 
     def get_context(self, user_id, start_message_id, offset=0, count=2):
-        return self.bot_api.method(
-            'messages.getHistory',
-            {
-                'user_id': user_id,
-                'start_message_id': start_message_id,
-                'offset': offset,
-                'count': count
-            }
+        return self.bot_api.messages.getHistory(
+            user_id=user_id,
+            start_message_id=start_message_id,
+            offset=offset,
+            count=count
         )['items']
 
     def get_user(self, url: str):
         if '.com/' in url:
             try:
-                user_id = self.bot_api.method(
-                    'users.get',
-                    {
-                        'user_ids': url[url.index('.com/')+5:]
-                    }
+                user_id = self.bot_api.users.get(
+                    user_ids=url[url.index('.com/')+5:]
                 )
                 return user_id[0]['id'], user_id[0]['first_name']
             except vk_api.exceptions.ApiError:
@@ -280,16 +282,13 @@ class ValentinesDayBot:
         else:
             return 0, ''
 
-    def tag_user(self, bot_api, user_id, user_name):
-        bot_api.method(
-            'wall.createComment',
-            {
-                'owner_id': -self.group_id,
-                'post_id': self.post_id,
-                'from_group': self.group_id,
-                'message': '@id{} ({}), у меня есть валентинка для тебя! '
-                           'Скорее напиши "начать" в сообщения группы, чтобы ее получить.'.format(user_id, user_name)
-            }
+    def tag_user(self, user_id, user_name):
+        self.bot_api.wall.createComment(
+            owner_id=-self.group_id,
+            post_id=self.post_id,
+            from_group=self.group_id,
+            message='@id{} ({}), у меня есть валентинка для тебя! '
+                    'Скорее напиши "начать" в сообщения группы, чтобы ее получить.'.format(user_id, user_name)
         )
 
     def upload_photo(self, url):
@@ -304,10 +303,12 @@ class ValentinesDayBot:
         pic_attach = 'photo{}_{}'.format(save_pic[0]['owner_id'], save_pic[0]['id'])
         return pic_attach
 
-    def try_to_send_vk(self, valentine):
+    def send_vk(self, user_id, valentine):
         message = '{}\n{}'.format(valentine['name'], valentine['paragraph'])
-        self.send_message(valentine['to_id'], 'Я принес тебе валентинку!')
-        self.send_message(valentine['to_id'], message, attachment=valentines[valentine['choice']])
+        self.send_message(user_id, 'Я принес тебе валентинку!')
+        self.send_message(user_id, message, attachment=valentines[valentine['choice']])
+        if valentine['sign']:
+            self.send_message(user_id, valentine['sign'])
 
     def force_send(self, valentine):
         pass
