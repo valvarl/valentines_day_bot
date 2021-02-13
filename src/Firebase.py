@@ -12,12 +12,12 @@ firebase = fb.FirebaseApplication(firebase_url)
 
 def init_user(user_id):
     result = firebase.post('/in_system/', user_id)
-    print(result)
+    # print(result)
 
 
 def get_valentine(user_id):
     result = firebase.get('/users/%d/' % user_id, 'valentine')
-    print(result)
+    # print(result)
     return result
 
 
@@ -28,7 +28,7 @@ def expect_valentine(user_id):
         for v in result.values():
             res = firebase.get('/storage/', v)
             if not res['sent']:
-                firebase.put('/storage/{}/'.format(v), 'sent', True)
+                res['storage_url'] = v
                 new.append(res)
         return new
     else:
@@ -37,7 +37,7 @@ def expect_valentine(user_id):
 
 def set_name(user_id, name, data):
     result = firebase.put('/users/{}/valentine/'.format(user_id), name, data)
-    print(result)
+    # print(result)
 
 
 def storage_valentine(user_id, to_id, to_name):
@@ -48,27 +48,27 @@ def storage_valentine(user_id, to_id, to_name):
     data['sent'] = False
     result = firebase.post('/storage/', data)
     storage_link = result['name']
-    print(result)
+    # print(result)
     if to_id:
         result = firebase.post('/awaiting_dispatch/%d' % to_id, storage_link)
-        print(result)
+        # print(result)
     return data, storage_link
 
 
 def users_in_system():
     result = firebase.get('', 'in_system')
-    print(result)
+    # print(result)
     return list(result.values()) if result else []
 
 
 def archive(valentine):
     result = firebase.post('/archive/', valentine)
-    print(result)
+    # print(result)
 
 
 def mark_sent(storage_link):
     result = firebase.put('/storage/{}/'.format(storage_link), 'sent', True)
-    print(result)
+    # print(result)
 
 
 def get_valentines():
