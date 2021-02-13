@@ -22,7 +22,7 @@ with open('src/valentines.json', encoding='utf8') as inf:
     valentines = json.load(inf)
 
 DAY_X = 12
-HOUR_X = 22
+HOUR_X = 23
 
 
 class ValentinesDayBot:
@@ -47,7 +47,6 @@ class ValentinesDayBot:
                 message_id = event.message['id']
                 message = event.message['text'].lower()
                 if message in ['начать', 'start']:
-                    self.force_send(get_valentine(from_id))
                     if event.message['conversation_message_id'] != 1:
                         valentine = get_valentine(from_id)
                         if valentine and 'remain' in valentine.keys():
@@ -69,6 +68,7 @@ class ValentinesDayBot:
                         self.send_message(from_id, phrases['name'])
                     elif context[-1]['text'] == phrases['privacy']:
                         set_name(from_id, 'sign', '')
+                        self.send_vk(from_id, get_valentine(from_id))
                         self.send_message(from_id, phrases['look1'], keyboard='no-yes')
                     elif context[-1]['text'] == phrases['look1']:
                         self.send_message(from_id, phrases['paragraph'], keyboard='skip')
@@ -87,7 +87,7 @@ class ValentinesDayBot:
                         user_in_system = to_id in users_in_system()
                         now = datetime.utcnow() + timedelta(hours=3)
                         if now >= datetime(2021, 2, DAY_X, HOUR_X):
-                            if self.force_send(valentine):
+                            if self.force_send(valentine['to_id'], valentine):
                                 mark_sent(storage_link)
                         elif to_id:
                             if now.day >= DAY_X:
@@ -162,15 +162,16 @@ class ValentinesDayBot:
                     context = self.get_context(from_id, message_id)
                     if context[-1]['text'] == phrases['contacts'] or context[-1]['text'].endswith(phrases['look3']):
                         self.send_message(from_id, phrases['finish3'][2:], keyboard='start2')
-                elif event.message['attachments']:
+                elif event.message['attachments'] and event.message['attachments'][0]['type'] == 'photo' and \
+                        get_valentine(from_id)['remain'] > 0:
                     context = self.get_context(from_id, message_id)
                     if context[-1]['text'] == phrases['valentine']:
-                        if event.message['attachments'][0]['type'] == 'photo':
-                            url = sorted(event.message['attachments'][0]['photo']['sizes'],
-                                         key=lambda x: x['height']*x['width'], reverse=True)[0]['url']
-                            photo = self.upload_photo(url)
-                            set_name(from_id, 'photo', photo)
-                            set_name(from_id, 'choice', '')
+                        url = sorted(event.message['attachments'][0]['photo']['sizes'],
+                                     key=lambda x: x['height']*x['width'], reverse=True)[0]['url']
+                        photo = self.upload_photo(url)
+                        set_name(from_id, 'photo', photo)
+                        set_name(from_id, 'choice', '')
+                        self.send_message(from_id, phrases['privacy'], keyboard='yes-no')
                 elif message == self.st1_start:
                     self.send_message(from_id, "Начинаю рассылку валентинок по вк.")
                     self.broadcast(self.send_vk)
@@ -200,6 +201,7 @@ class ValentinesDayBot:
                             self.send_message(from_id, phrases['privacy'], keyboard='yes-no')
                     elif context[-1]['text'] == phrases['pseudonym']:
                         set_name(from_id, 'sign', event.message['text'])
+                        self.send_vk(from_id, get_valentine(from_id))
                         self.send_message(from_id, phrases['look1'], keyboard='no-yes')
                     elif context[-1]['text'] in [phrases['paragraph'], phrases['again2']]:
                         set_name(from_id, 'paragraph', event.message['text'])
@@ -325,25 +327,26 @@ class ValentinesDayBot:
 
     def send_vk(self, user_id, valentine):
         try:
-            paragraph = '\n' + valentine['paragraph'] if valentine['paragraph'] else ''
-            sign = '\n' + valentine['sign'] if valentine['sign'] else ''
-            message = '{}!{}{}'.format(valentine['name'], paragraph, sign)
-            self.send_message(user_id, message, attachment=valentines[valentine['choice']])
+            sign = ' от ' + valentine['sign'] if valentine['sign'] else ''
+            paragraph = '\n\n' + valentine['paragraph'] if valentine['paragraph'] else ''
+            message = '{}, это тебе{}!{}'.format(valentine['name'], sign, paragraph)
+            attachment = valentine['photo'] if valentine['photo'] else valentines[valentine['enum'][valentine['choice']]]
+            self.send_message(user_id, message, attachment=attachment)
             return True
         except Exception:
             return False
 
-    def force_send(self, valentine):
-        if valentine['to_id'] in users_in_system() and self.send_vk(valentine['to_id'], valentine):
+    def force_send(self, user_id, valentine):
+        if user_id in users_in_system() and self.send_vk(user_id, valentine):
             return True
         elif valentine['email']:
             message = MIMEMultipart()
             message['From'] = self.email
             message['To'] = valentine['email']
             message['Subject'] = 'Валентинка 😊'
-            paragraph = '\n' + valentine['paragraph'] if valentine['paragraph'] else ''
-            sign = '\n' + valentine['sign'] if valentine['sign'] else ''
-            msg = '{}!{}{}'.format(valentine['name'], paragraph, sign)
+            sign = ' от ' + valentine['sign'] if valentine['sign'] else ''
+            paragraph = '\n\n' + valentine['paragraph'] if valentine['paragraph'] else ''
+            msg = '{}, это тебе{}!{}'.format(valentine['name'], sign, paragraph)
             message.attach(MIMEText(msg, 'plain'))
 
             attach_file_name = 'valentine%d.mp4' % valentine['choice']
@@ -370,5 +373,5 @@ class ValentinesDayBot:
         val = get_valentines()
         if val:
             for v in [v for v in val.keys() if val[v]['to_id'] and not val[v]['sent']]:
-                if func(v['to_id'], val[v]):
+                if func(val[v]['to_id'], val[v]):
                     mark_sent(v)
