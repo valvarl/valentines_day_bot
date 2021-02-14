@@ -23,7 +23,7 @@ with open('src/valentines.json', encoding='utf8') as inf:
     valentines = json.load(inf)
 
 DAY_X = 14
-HOUR_X = 22
+HOUR_X = 21
 
 
 class ValentinesDayBot:
@@ -49,12 +49,16 @@ class ValentinesDayBot:
                         from_id = event.message['from_id']
                         message_id = event.message['id']
                         message = event.message['text'].lower()
+                        now = datetime.utcnow() + timedelta(hours=3)
                         if message in ['начать', 'start']:
                             if event.message['conversation_message_id'] != 1:
                                 valentine = get_valentine(from_id)
                                 if valentine and 'remain' in valentine.keys():
                                     if valentine['remain'] > 0:
-                                        self.send_message(from_id, phrases['name'])
+                                        if now.day <= DAY_X:
+                                            self.send_message(from_id, phrases['name'])
+                                        else:
+                                            self.send_message(from_id, phrases['cannot'], keyboard='start')
                                     else:
                                         self.send_message(from_id, phrases['all_sent'])
                                 else:
@@ -70,7 +74,10 @@ class ValentinesDayBot:
                             if context[-1]['from_id'] != -self.group_id:
                                 continue
                             if context[-1]['text'] == phrases['greeting'] and get_valentine(from_id)['remain'] > 0:
-                                self.send_message(from_id, phrases['name'])
+                                if now.day <= DAY_X:
+                                    self.send_message(from_id, phrases['name'])
+                                else:
+                                    self.send_message(from_id, phrases['cannot'], keyboard='start')
                             elif context[-1]['text'] == phrases['privacy']:
                                 set_name(from_id, 'sign', '')
                                 set_name(from_id, 'paragraph', '')
@@ -405,6 +412,8 @@ class ValentinesDayBot:
 
         else:
             archive(valentine)
+            if user_id:
+                self.tag_user(user_id, valentine['to_name'])
             return False
 
     @staticmethod
