@@ -99,7 +99,8 @@ class ValentinesDayBot:
                                 valentine, storage_link = storage_valentine(from_id, to_id, to_name)
                                 user_in_system = to_id in users_in_system()
                                 now = datetime.utcnow() + timedelta(hours=3)
-                                if now >= datetime(2021, 2, DAY_X, HOUR_X):
+                                # TODO: const year change
+                                if now >= datetime(2022, 2, DAY_X, HOUR_X):
                                     if self.force_send(valentine['to_id'], valentine):
                                         mark_sent(storage_link)
                                 elif to_id:
@@ -162,7 +163,8 @@ class ValentinesDayBot:
                                     self.send_message(from_id, phrases['contacts'], keyboard='contacts')
                         elif message == 'нет, я жду свою валентиночку':
                             context = self.get_context(from_id, message_id)
-                            if context[-1]['from_id'] == -self.group_id and context[-1]['text'] == phrases['greeting'] or \
+                            if context[-1]['from_id'] == -self.group_id and context[-1]['text'] == phrases[
+                                'greeting'] or \
                                     context[-1]['text'].endswith(phrases['finish3'][2:]):
                                 valentine = expect_valentine(from_id)
                                 if valentine:
@@ -213,14 +215,16 @@ class ValentinesDayBot:
                                 valentine = get_valentine(from_id)
                                 if 'ready' not in valentine.keys() or 'ready' in valentine.keys() and valentine[
                                     'ready']:
-                                    enum = list(sorted(random.sample(range(15), 5)))
+                                    # TODO: variable number of attachments
+                                    enum = list(sorted(random.sample(range(14), 5)))
                                     set_name(from_id, 'enum', enum)
                                     set_name(from_id, 'ready', False)
                                 else:
                                     enum = valentine['enum']
                                 # print(enum)
+                                # TODO: variable number of attachments
                                 self.send_message(from_id, phrases['valentine'], keyboard='choice',
-                                                  attachment=[valentines[i] for i in range(15) if i in enum])
+                                                  attachment=[valentines[i] for i in range(14) if i in enum])
                             elif context[-1]['text'] == phrases['valentine']:
                                 if message in [str(i) for i in range(1, 6)]:
                                     set_name(from_id, 'choice', int(message) - 1)
